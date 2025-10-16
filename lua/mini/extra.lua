@@ -1859,7 +1859,10 @@ end
 H.git_difflines_to_hunkitems = function(lines, n_context)
   local header_pattern = '^diff %-%-git'
   local hunk_pattern = '^@@ %-%d+,?%d* %+(%d+),?%d* @@'
-  local to_path_pattern = '^%+%+%+ b/(.*)$'
+  -- NOTE: Account for possible `diff.mnemonicPrefix=true` Git config. In that
+  -- case the destination can also be `w`. If won't work for some reason, more
+  -- robust solution is to modify `git diff`: `--src-prefix=a/ --dst-prefix=b/`
+  local to_path_pattern = '^%+%+%+ [bw]/(.*)$'
 
   -- Parse diff lines
   local cur_header, cur_path, is_in_hunk = {}, nil, false
