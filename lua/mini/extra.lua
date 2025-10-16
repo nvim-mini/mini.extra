@@ -1862,6 +1862,7 @@ H.git_difflines_to_hunkitems = function(lines, n_context)
   -- NOTE: Account for possible `diff.mnemonicPrefix=true` Git config. In that
   -- case the destination can also be `w`. If won't work for some reason, more
   -- robust solution is to modify `git diff`: `--src-prefix=a/ --dst-prefix=b/`
+  local from_path_pattern = '^%-%-%- [ai]/(.*)$'
   local to_path_pattern = '^%+%+%+ [bw]/(.*)$'
 
   -- Parse diff lines
@@ -1874,7 +1875,7 @@ H.git_difflines_to_hunkitems = function(lines, n_context)
       cur_header = {}
     end
 
-    local path_match = l:match(to_path_pattern)
+    local path_match = l:match(to_path_pattern) or l:match(from_path_pattern)
     if path_match ~= nil and not is_in_hunk then cur_path = path_match end
 
     local hunk_start = l:match(hunk_pattern)
