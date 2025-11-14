@@ -1205,12 +1205,13 @@ MiniExtra.pickers.lsp = function(local_opts, opts)
   }
   local scope = H.pick_validate_scope(local_opts, allowed_scopes, 'lsp')
 
-  if scope == 'references' then return vim.lsp.buf[scope](nil, { on_list = H.lsp_make_on_list(scope, opts) }) end
+  local buf_lsp_opts = H.lsp_make_opts(scope, opts)
+  if scope == 'references' then return vim.lsp.buf[scope](nil, buf_lsp_opts) end
   if scope == 'workspace_symbol' then
     local query = tostring(local_opts.symbol_query)
-    return vim.lsp.buf[scope](query, { on_list = H.lsp_make_on_list(scope, opts) })
+    return vim.lsp.buf[scope](query, buf_lsp_opts)
   end
-  vim.lsp.buf[scope]({ on_list = H.lsp_make_on_list(scope, opts) })
+  vim.lsp.buf[scope](buf_lsp_opts)
 end
 
 --- Neovim marks picker
@@ -1924,8 +1925,8 @@ H.git_difflines_to_hunkitems = function(lines, n_context)
 end
 
 -- LSP picker -----------------------------------------------------------------
-H.lsp_make_on_list = function(source, opts)
-  local is_symbol = source == 'document_symbol' or source == 'workspace_symbol'
+H.lsp_make_opts = function(source, opts)
+  local is_symbol = source:find('symbol') ~= nil
 
   -- Prepend file position info to item, add decortion, and sort
   local add_decor_data = function() end
@@ -1958,24 +1959,24 @@ H.lsp_make_on_list = function(source, opts)
   end
 
   local pick = H.validate_pick()
-  local show_explicit = H.pick_get_config().source.show
-  local show = function(buf_id, items_to_show, query)
-    if show_explicit ~= nil then return show_explicit(buf_id, items_to_show, query) end
-    if is_symbol then
-      pick.default_show(buf_id, items_to_show, query)
+  local picker_opts = { source = { name = string.format('LSP (%s)', source) } }
 
-      -- Highlight whole lines with pre-computed symbol kind highlight groups
-      H.pick_clear_namespace(buf_id, H.ns_id.pickers)
-      for i, item in ipairs(items_to_show) do
-        H.pick_highlight_line(buf_id, i, item.hl, 199)
-      end
-      return
-    end
+  local show_explicit = H.pick_get_config().source.show
+  picker_opts.source.show = function(buf_id, items_to_show, query)
+    if show_explicit ~= nil then return show_explicit(buf_id, items_to_show, query) end
     -- Show with icons as the non-symbol scopes should have paths
-    return H.show_with_icons(buf_id, items_to_show, query)
+    if not is_symbol then return H.show_with_icons(buf_id, items_to_show, query) end
+
+    -- Highlight whole lines with pre-computed symbol kind highlight groups
+    pick.default_show(buf_id, items_to_show, query)
+
+    H.pick_clear_namespace(buf_id, H.ns_id.pickers)
+    for i, item in ipairs(items_to_show) do
+      H.pick_highlight_line(buf_id, i, item.hl, 199)
+    end
   end
 
-  local choose = function(item)
+  picker_opts.source.choose = function(item)
     pick.default_choose(item)
     -- Ensure relative path in `:buffers` output with hacky workaround.
     -- `default_choose` ensures it with `bufadd(fnamemodify(path, ':.'))`, but
@@ -1983,16 +1984,17 @@ H.lsp_make_on_list = function(source, opts)
     vim.fn.chdir(vim.fn.getcwd())
   end
 
-  return function(data)
+  local on_list = function(data)
     local items = data.items
     for _, item in ipairs(data.items) do
       item.text, item.path = item.text or '', item.filename or nil
     end
     items = process(items)
 
-    local source_opts = { name = string.format('LSP (%s)', source), show = show, choose = choose }
-    return H.pick_start(items, { source = source_opts }, opts)
+    return H.pick_start(items, picker_opts, opts)
   end
+
+  return { on_list = on_list }
 end
 
 H.get_symbol_kind_map = function()
