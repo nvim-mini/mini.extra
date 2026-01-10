@@ -1247,6 +1247,9 @@ MiniExtra.pickers.manpages = function(local_opts, opts)
   local pick = H.validate_pick('manpages')
   if vim.fn.has('nvim-0.10') == 0 then H.error('`manpages` picker needs Neovim>=0.10') end
 
+  -- - Choose proper manpager, since `cat` doesn't fully work on MacOS
+  local manpager = vim.fn.executable('col') == 1 and 'col -bx' or 'cat'
+
   local show_man = function(buf_id, item, add_name)
     local name, section = (item or ''):match('^(.-)%s-%((.-)%)')
     if name == nil or section == nil then return end
@@ -1260,7 +1263,7 @@ MiniExtra.pickers.manpages = function(local_opts, opts)
     -- Ideally, no hard wrapping should be done, but it doesn't look good
     local win_id = vim.fn.win_findbuf(buf_id)[1]
     local width = H.is_valid_win(win_id) and vim.api.nvim_win_get_width(win_id) or 999
-    local sys_out = vim.system({ 'man', section, name }, { env = { MANWIDTH = width } }):wait()
+    local sys_out = vim.system({ 'man', section, name }, { env = { MANWIDTH = width, MANPAGER = manpager } }):wait()
     local lines = vim.split(sys_out.stdout or '', '\n')
 
     vim.api.nvim_buf_set_lines(buf_id, 0, -1, false, lines)
@@ -1278,10 +1281,14 @@ MiniExtra.pickers.manpages = function(local_opts, opts)
     show_man(buf_id, item, true)
   end
 
+  -- Set necessary environment variables for `vim.loop.spawn` (as it doesn't
+  -- inherit environment variables)
+  local env = { 'MANWIDTH=999' }
+  table.insert(env, vim.env.PATH ~= nil and ('PATH=' .. vim.env.PATH) or nil)
+  table.insert(env, vim.env.MANPATH ~= nil and ('MANPATH=' .. vim.env.MANPATH) or nil)
   local source = { name = 'Manpages', choose = choose, preview = preview }
   opts = vim.tbl_deep_extend('force', { source = source }, opts or {})
-  local spawn_opts = { env = { 'MANWIDTH=999' } }
-  return pick.builtin.cli({ command = { 'man', '-k', '.' }, spawn_opts = spawn_opts }, opts)
+  return pick.builtin.cli({ command = { 'man', '-k', '.' }, spawn_opts = { env = env } }, opts)
 end
 
 --- Neovim marks picker
