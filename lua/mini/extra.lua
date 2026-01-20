@@ -1233,10 +1233,8 @@ end
 ---
 --- Pick manual page (like described in |ft-man-plugin|).
 --- Notes:
---- - Requires `man` executable. Not present on Windows.
---- - Requires Neovim>=0.10.
---- - Does not use |:Man|. Shows page in the target window.
----   Use |MiniPick-actions-choose| to split.
+--- - Depends on |:Man| command to preview and choose items.
+--- - Shows page in the target window. Use |MiniPick-actions-choose| to split.
 ---
 ---@param local_opts __extra_pickers_local_opts
 ---   Not used at the moment.
@@ -1245,41 +1243,38 @@ end
 ---@return __extra_pickers_return
 MiniExtra.pickers.manpages = function(local_opts, opts)
   local pick = H.validate_pick('manpages')
-  if vim.fn.has('nvim-0.10') == 0 then H.error('`manpages` picker needs Neovim>=0.10') end
+  if vim.fn.exists(':Man') ~= 2 then H.error('`manpages` picker needs `:Man` command') end
 
-  -- - Choose proper manpager, since `cat` doesn't fully work on MacOS
-  local manpager = vim.fn.executable('col') == 1 and 'col -bx' or 'cat'
-
-  local show_man = function(buf_id, item, add_name)
+  local latest_man_buf_id
+  local show_man = function(win_id, item, is_preview)
+    -- table.insert(_G.log, { item, name, section })
     local name, section = (item or ''):match('^(.-)%s-%((.-)%)')
     if name == nil or section == nil then return end
     -- - Use first command
     name = name:gsub(',.*$', '')
     -- - Extract first valid section. NOTE: using only digits is not enough
     --   (for example, `man 1 man` and `man 1p man` are different).
-    section = section:match('%w+') or section:gsub('[/%,].*$', '')
+    section = section:match('%w+') or ''
 
-    -- Compute manpage content, possibly hard wrapped to window width
-    -- Ideally, no hard wrapping should be done, but it doesn't look good
-    local win_id = vim.fn.win_findbuf(buf_id)[1]
-    local width = H.is_valid_win(win_id) and vim.api.nvim_win_get_width(win_id) or 999
-    local sys_out = vim.system({ 'man', section, name }, { env = { MANWIDTH = width, MANPAGER = manpager } }):wait()
-    local lines = vim.split(sys_out.stdout or '', '\n')
+    -- Show man page directly in the target window
+    vim.api.nvim_win_call(win_id, function() vim.cmd('hide Man ' .. section .. ' ' .. name) end)
 
-    vim.api.nvim_buf_set_lines(buf_id, 0, -1, false, lines)
-    vim.bo[buf_id].modified = false
-    vim.bo[buf_id].filetype = 'man'
-    if add_name then vim.api.nvim_buf_set_name(buf_id, string.format('man://%s(%s)', name, section)) end
+    -- Ensure proper choose. Possibly undo `buflisted=false` from preview.
+    if not is_preview then
+      vim.bo.buflisted = true
+      return
+    end
+
+    -- Ensure proper preview buffer
+    vim.bo.buflisted, vim.bo.bufhidden, vim.bo.matchpairs = false, 'wipe', ''
+    vim.b.minicursorword_disable = true
+    vim.b.miniindentscope_disable = true
+    -- - Modify after `:Man` to not have "Buffer with this name already exists"
+    vim.api.nvim_buf_set_name(0, 'minipick://' .. vim.api.nvim_get_current_buf() .. '/preview')
   end
 
-  local preview = function(buf_id, item) show_man(buf_id, item, false) end
-
-  local choose = function(item)
-    local win_id_target = MiniPick.get_picker_state().windows.target
-    local buf_id = vim.api.nvim_create_buf(true, false)
-    vim.api.nvim_win_set_buf(win_id_target, buf_id)
-    show_man(buf_id, item, true)
-  end
+  local preview = function(buf_id, item) show_man(vim.fn.win_findbuf(buf_id)[1], item, true) end
+  local choose = function(item) show_man(MiniPick.get_picker_state().windows.target, item) end
 
   -- Set necessary environment variables for `vim.loop.spawn` (as it doesn't
   -- inherit environment variables)

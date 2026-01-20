@@ -657,10 +657,8 @@ Manual pages
 
 Pick manual page (like described in |ft-man-plugin|).
 Notes:
-- Requires `man` executable. Not present on Windows.
-- Requires Neovim>=0.10.
-- Does not use |:Man|. Shows page in the target window.
-  Use |MiniPick-actions-choose| to split.
+- Depends on |:Man| command to preview and choose items.
+- Shows page in the target window. Use |MiniPick-actions-choose| to split.
 
 Parameters ~
 {local_opts} `(table|nil)` Options defining behavior of this particular picker.
